@@ -37,7 +37,13 @@ def copyFrame(inputFrame,outputFrame):
     dst = TEMP_FOLDER+"/newFrame{:06d}".format(outputFrame+1)+".jpg"
     if not os.path.isfile(src):
         return False
-    move(src, dst)
+    copyfile(src, dst)
+    inputFrame-=1
+    src = TEMP_FOLDER+"/frame{:06d}".format(inputFrame+1)+".jpg"
+    while os.path.isfile(src):
+	    os.remove(src)
+	    inputFrame-=1
+	    src = TEMP_FOLDER+"/frame{:06d}".format(inputFrame+1)+".jpg"
     if outputFrame % 1000 == 999:
         print(str(outputFrame + 1) + " time-altered frames saved.")
     return True
