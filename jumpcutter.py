@@ -80,7 +80,7 @@ parser.add_argument('--frame_quality', type=int, default=3, help="quality of fra
 parser.add_argument('--preset', type=str, default="medium", help="A preset is a collection of options that will provide a certain encoding speed to compression ratio. See https://trac.ffmpeg.org/wiki/Encode/H.264")
 parser.add_argument('--crf', type=int, default=23, help="Constant Rate Factor (CRF). Lower value - better quality but large filesize. See https://trac.ffmpeg.org/wiki/Encode/H.264")
 parser.add_argument('--stretch_algorithm', type=str, default="wsola", help="Sound stretching algorithm. 'phasevocoder' is best in general, but sounds phasy. 'wsola' may have a bit of wobble, but sounds better in many cases.")
-
+parser.add_argument('--audio_only', default=False, action='store_true', help="outputs an audio file")
 
 args = parser.parse_args()
 
@@ -90,6 +90,7 @@ frameRate = args.frame_rate
 SAMPLE_RATE = args.sample_rate
 SILENT_THRESHOLD = args.silent_threshold
 FRAME_SPREADAGE = args.frame_margin
+AUDIO_ONLY = args.audio_only
 NEW_SPEED = [args.silent_speed, args.sounded_speed]
 if args.url != None:
     INPUT_FILE = downloadFile(args.url)
@@ -122,8 +123,9 @@ AUDIO_FADE_ENVELOPE_SIZE = 400 # smooth out transitiion's audio by quickly fadin
     
 createPath(TEMP_FOLDER)
 
-command = "ffmpeg -i "+INPUT_FILE+" -qscale:v "+str(FRAME_QUALITY)+" "+TEMP_FOLDER+"/frame%06d.jpg -hide_banner"
-subprocess.call(command, shell=True)
+if not AUDIO_ONLY:
+    command = "ffmpeg -i "+INPUT_FILE+" -qscale:v "+str(FRAME_QUALITY)+" "+TEMP_FOLDER+"/frame%06d.jpg -hide_banner"
+    subprocess.call(command, shell=True)
 
 command = "ffmpeg -i "+INPUT_FILE+" -ab 160k -ac 2 -ar "+str(SAMPLE_RATE)+" -vn "+TEMP_FOLDER+"/audio.wav"
 
@@ -138,7 +140,10 @@ maxAudioVolume = getMaxVolume(audioData)
 if frameRate is None:
     frameRate = getFrameRate(INPUT_FILE)
 
-samplesPerFrame = sampleRate/frameRate
+if not AUDIO_ONLY:
+    samplesPerFrame = sampleRate/frameRate
+else:
+    samplesPerFrame = sampleRate
 
 audioFrameCount = int(math.ceil(audioSampleCount/samplesPerFrame))
 
@@ -197,25 +202,30 @@ for chunk in chunks:
         for i in range(endPointer-AUDIO_FADE_ENVELOPE_SIZE, endPointer):
             outputAudioData[i][0]*=(1-mask[i-endPointer+AUDIO_FADE_ENVELOPE_SIZE])
             outputAudioData[i][1]*=(1-mask[i-endPointer+AUDIO_FADE_ENVELOPE_SIZE])
-
-    startOutputFrame = int(math.ceil(outputPointer/samplesPerFrame))
-    endOutputFrame = int(math.ceil(endPointer/samplesPerFrame))
-    for outputFrame in range(startOutputFrame, endOutputFrame):
-        inputFrame = int(chunk[0]+NEW_SPEED[int(chunk[2])]*(outputFrame-startOutputFrame))
-        didItWork = copyFrame(inputFrame,outputFrame)
-        if didItWork:
-            lastExistingFrame = inputFrame
-        else:
-            copyFrame(lastExistingFrame,outputFrame)
-
+    if not AUDIO_ONLY:
+        startOutputFrame = int(math.ceil(outputPointer/samplesPerFrame))
+        endOutputFrame = int(math.ceil(endPointer/samplesPerFrame))
+        for outputFrame in range(startOutputFrame, endOutputFrame):
+            inputFrame = int(chunk[0]+NEW_SPEED[int(chunk[2])]*(outputFrame-startOutputFrame))
+            didItWork = copyFrame(inputFrame,outputFrame)
+            if didItWork:
+                lastExistingFrame = inputFrame
+            else:
+                copyFrame(lastExistingFrame,outputFrame)
     outputPointer = endPointer
 
 outputAudioData =  np.asarray(outputAudioData)
 wavfile.write(TEMP_FOLDER+"/audioNew.wav",SAMPLE_RATE,outputAudioData)
 
-
-command = f"ffmpeg -framerate {frameRate} -i {TEMP_FOLDER}/newFrame%06d.jpg -i {TEMP_FOLDER}/audioNew.wav -strict -2 -c:v libx264 -preset {H264_PRESET} -crf {H264_CRF} -pix_fmt yuvj420p {OUTPUT_FILE}"
-subprocess.call(command, shell=True)
+'''
+outputFrame = math.ceil(outputPointer/samplesPerFrame)
+for endGap in range(outputFrame,audioFrameCount):
+    copyFrame(int(audioSampleCount/samplesPerFrame)-1,endGap)
+'''
+if not AUDIO_ONLY:
+    command = f"ffmpeg -framerate {frameRate} -i {TEMP_FOLDER}/newFrame%06d.jpg -i {TEMP_FOLDER}/audioNew.wav -strict -2 -c:v libx264 -preset {H264_PRESET} -crf {H264_CRF} -pix_fmt yuvj420p {OUTPUT_FILE}"
+    subprocess.call(command, shell=True)
+else:
+    copyfile(TEMP_FOLDER+"/audioNew.wav", OUTPUT_FILE)
 
 deletePath(TEMP_FOLDER)
-
