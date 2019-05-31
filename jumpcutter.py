@@ -140,10 +140,7 @@ maxAudioVolume = getMaxVolume(audioData)
 if frameRate is None:
     frameRate = getFrameRate(INPUT_FILE)
 
-if not AUDIO_ONLY:
-    samplesPerFrame = sampleRate/frameRate
-else:
-    samplesPerFrame = sampleRate
+samplesPerFrame = sampleRate/frameRate
 
 audioFrameCount = int(math.ceil(audioSampleCount/samplesPerFrame))
 
@@ -222,10 +219,11 @@ outputFrame = math.ceil(outputPointer/samplesPerFrame)
 for endGap in range(outputFrame,audioFrameCount):
     copyFrame(int(audioSampleCount/samplesPerFrame)-1,endGap)
 '''
-if not AUDIO_ONLY:
-    command = f"ffmpeg -framerate {frameRate} -i {TEMP_FOLDER}/newFrame%06d.jpg -i {TEMP_FOLDER}/audioNew.wav -strict -2 -c:v libx264 -preset {H264_PRESET} -crf {H264_CRF} -pix_fmt yuvj420p {OUTPUT_FILE}"
-    subprocess.call(command, shell=True)
+if AUDIO_ONLY:
+    command = f"ffmpeg -i {TEMP_FOLDER}/audioNew.wav {OUTPUT_FILE}"
 else:
-    copyfile(TEMP_FOLDER+"/audioNew.wav", OUTPUT_FILE)
+    command = f"ffmpeg -framerate {frameRate} -i {TEMP_FOLDER}/newFrame%06d.jpg -i {TEMP_FOLDER}/audioNew.wav -strict -2 -c:v libx264 -preset {H264_PRESET} -crf {H264_CRF} -pix_fmt yuvj420p {OUTPUT_FILE}"
+
+subprocess.call(command, shell=True)
 
 deletePath(TEMP_FOLDER)
