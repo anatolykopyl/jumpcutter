@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# PYTHON_ARGCOMPLETE_OK
 import subprocess
 from audiotsm.io.wav import WavReader, WavWriter
 from scipy.io import wavfile
@@ -82,6 +84,11 @@ parser.add_argument('--crf', type=int, default=23, help="Constant Rate Factor (C
 parser.add_argument('--stretch_algorithm', type=str, default="wsola", help="Sound stretching algorithm. 'phasevocoder' is best in general, but sounds phasy. 'wsola' may have a bit of wobble, but sounds better in many cases.")
 parser.add_argument('--audio_only', default=False, action='store_true', help="outputs an audio file")
 
+try: # If you want bash completion take a look at https://pypi.org/project/argcomplete/
+    import argcomplete
+    argcomplete.autocomplete(parser)
+except:
+    pass
 args = parser.parse_args()
 
 
