@@ -61,12 +61,14 @@ def createPath(s):
     except OSError:  
         assert False, "Creation of the directory %s failed. (The TEMP folder may already exist. Delete or rename it, and try again.)"
 
-def deletePath(s): # Dangerous! Watch out!
+def deletePathAndExit(s, msg="", rc=0): # Dangerous! Watch out!
     try:  
         rmtree(s,ignore_errors=False)
     except OSError:  
         print ("Deletion of the directory %s failed" % s)
         print(OSError)
+    print(msg)
+    exit(rc)
 
 parser = argparse.ArgumentParser(description='Modifies a video file to play at different speeds when there is sound vs. silence.')
 parser.add_argument('--input_file', type=str,  help='the video file you want modified')
@@ -117,6 +119,7 @@ else:
     raise Exception("Unknown audio stretching algorithm.")
 
 assert INPUT_FILE != None , "why u put no input file, that dum"
+assert os.path.isfile(INPUT_FILE), "I can't read/find your input file"
 assert FRAME_QUALITY < 32 , "The max value for frame quality is 31."
 assert FRAME_QUALITY > 0 , "The min value for frame quality is 1."
     
@@ -131,21 +134,28 @@ AUDIO_FADE_ENVELOPE_SIZE = 400 # smooth out transitiion's audio by quickly fadin
 createPath(TEMP_FOLDER)
 
 if not AUDIO_ONLY:
-    command = "ffmpeg -i "+INPUT_FILE+" -qscale:v "+str(FRAME_QUALITY)+" "+TEMP_FOLDER+"/frame%06d.jpg -hide_banner"
-    subprocess.call(command, shell=True)
+    command = ["ffmpeg", "-i", INPUT_FILE, "-qscale:v", str(FRAME_QUALITY), TEMP_FOLDER+"/frame%06d.jpg", "-hide_banner"]
+    rc = subprocess.run(command)
+    if rc.returncode != 0:
+        deletePathAndExit(TEMP_FOLDER,"The input file doesn't have any video. Try --audio_only",rc.returncode)
 
-command = "ffmpeg -i "+INPUT_FILE+" -ab 160k -ac 2 -ar "+str(SAMPLE_RATE)+" -vn "+TEMP_FOLDER+"/audio.wav"
-
-subprocess.call(command, shell=True)
-
-
+command = ["ffmpeg", "-i", INPUT_FILE, "-ab", "160k", "-ac", "2", "-ar", str(SAMPLE_RATE), "-vn" ,TEMP_FOLDER+"/audio.wav"]
+rc = subprocess.run(command)
+if rc.returncode != 0:
+    deletePathAndExit(TEMP_FOLDER,"The input file doesn't have any sound.",rc.returncode)
 
 sampleRate, audioData = wavfile.read(TEMP_FOLDER+"/audio.wav")
 audioSampleCount = audioData.shape[0]
 maxAudioVolume = getMaxVolume(audioData)
 
 if frameRate is None:
-    frameRate = getFrameRate(INPUT_FILE)
+    try:
+        frameRate = getFrameRate(INPUT_FILE)
+    except AttributeError:
+        if AUDIO_ONLY:
+            frameRate = 1
+        else:
+            deletePathAndExit(TEMP_FOLDER,"Couldn't detect a framerate.",rc.returncode)
 
 samplesPerFrame = sampleRate/frameRate
 
@@ -227,10 +237,12 @@ for endGap in range(outputFrame,audioFrameCount):
     copyFrame(int(audioSampleCount/samplesPerFrame)-1,endGap)
 '''
 if AUDIO_ONLY:
-    command = f"ffmpeg -i {TEMP_FOLDER}/audioNew.wav {OUTPUT_FILE}"
+    command = ["ffmpeg", "-i", TEMP_FOLDER+"/audioNew.wav", OUTPUT_FILE]
 else:
-    command = f"ffmpeg -framerate {frameRate} -i {TEMP_FOLDER}/newFrame%06d.jpg -i {TEMP_FOLDER}/audioNew.wav -strict -2 -c:v libx264 -preset {H264_PRESET} -crf {H264_CRF} -pix_fmt yuvj420p {OUTPUT_FILE}"
+    command = ["ffmpeg", "-framerate", str(frameRate), "-i", TEMP_FOLDER+"/newFrame%06d.jpg", "-i", TEMP_FOLDER +
+               "/audioNew.wav", "-strict", "-2", "-c:v", "libx264", "-preset", str(H264_PRESET), "-crf", str(H264_CRF), "-pix_fmt", "yuvj420p", OUTPUT_FILE]
+rc = subprocess.run(command)
+if rc.returncode != 0:
+    deletePathAndExit(TEMP_FOLDER,rc,rc.returncode)
 
-subprocess.call(command, shell=True)
-
-deletePath(TEMP_FOLDER)
+deletePathAndExit(TEMP_FOLDER)
