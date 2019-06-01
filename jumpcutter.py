@@ -40,14 +40,13 @@ def copyFrame(inputFrame,outputFrame):
     if not os.path.isfile(src):
         return False
     copyfile(src, dst)
+    # Remove unneeded frames
     inputFrame-=1
     src = TEMP_FOLDER+"/frame{:06d}".format(inputFrame+1)+".jpg"
     while os.path.isfile(src):
 	    os.remove(src)
 	    inputFrame-=1
 	    src = TEMP_FOLDER+"/frame{:06d}".format(inputFrame+1)+".jpg"
-    if outputFrame % 1000 == 999:
-        print(str(outputFrame + 1) + " time-altered frames saved.")
     return True
 
 def inputToOutputFilename(filename):
@@ -222,6 +221,8 @@ for chunk in chunks:
         for outputFrame in range(startOutputFrame, endOutputFrame):
             inputFrame = int(chunk[0]+NEW_SPEED[int(chunk[2])]*(outputFrame-startOutputFrame))
             didItWork = copyFrame(inputFrame,outputFrame)
+	    if outputFrame % 1000 == 999:
+                print(str(inputFrame + 1) + "/" + str(audioFrameCount) + " frames processed.", end="\r", flush=True)
             if didItWork:
                 lastExistingFrame = inputFrame
             else:
