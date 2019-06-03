@@ -221,7 +221,7 @@ for chunk in chunks:
         for outputFrame in range(startOutputFrame, endOutputFrame):
             inputFrame = int(chunk[0]+NEW_SPEED[int(chunk[2])]*(outputFrame-startOutputFrame))
             didItWork = copyFrame(inputFrame,outputFrame)
-	    if outputFrame % 1000 == 999:
+            if outputFrame % 1000 == 999:
                 print(str(inputFrame + 1) + "/" + str(audioFrameCount) + " frames processed.", end="\r", flush=True)
             if didItWork:
                 lastExistingFrame = inputFrame
