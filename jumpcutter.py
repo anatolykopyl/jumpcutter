@@ -11,6 +11,15 @@ import os
 import argparse
 from pytube import YouTube
 from time import time
+import distutils.util
+
+def safe_remove(path):
+    try:
+        os.remove(path)
+        return True
+    except OSError:
+        return False
+
 
 def downloadFile(url):
     sep = os.path.sep
@@ -43,8 +52,7 @@ def copyFrame(inputFrame,outputFrame):
     # Remove unneeded frames
     inputFrame-=1
     src = TEMP_FOLDER+"/frame{:06d}".format(inputFrame+1)+".jpg"
-    while os.path.isfile(src):
-	    os.remove(src)
+    while safe_remove(src):
 	    inputFrame-=1
 	    src = TEMP_FOLDER+"/frame{:06d}".format(inputFrame+1)+".jpg"
     return True
@@ -69,10 +77,34 @@ def deletePathAndExit(s, msg="", rc=0): # Dangerous! Watch out!
     print(msg)
     exit(rc)
 
+def writeELD(start, end, number):
+    startFrame = int(start % frameRate)
+    startSecond = int((start / frameRate) % 60)
+    startMinute = int((start / frameRate / 60) % 60)
+    startHour = int((start / frameRate / 60 / 60))
+    endFrame = int(end % frameRate)
+    endSecond = int((end / frameRate) % 60)
+    endMinute = int((end / frameRate / 60) % 60)
+    endHour = int((end / frameRate / 60 / 60))
+    eld_file = open(OUTPUT_FILE, "a")
+    eld_file.write("{0} 001 V C {4}:{3}:{2}:{1} {8}:{7}:{6}:{5} {4}:{3}:{2}:{1} {8}:{7}:{6}:{5}\r\n".format(
+        str(number).zfill(3),
+        str(startFrame).zfill(2),
+        str(startSecond).zfill(2),
+        str(startMinute).zfill(2),
+        str(startHour).zfill(2),
+        str(endFrame).zfill(2),
+        str(endSecond).zfill(2),
+        str(endMinute).zfill(2),
+        str(endHour).zfill(2)
+    ))
+    eld_file.close()
+
 parser = argparse.ArgumentParser(description='Modifies a video file to play at different speeds when there is sound vs. silence.')
 parser.add_argument('-i', '--input_file', type=str,  help='the video file you want modified')
 parser.add_argument('-u', '--url', type=str, help='A youtube url to download and process')
 parser.add_argument('-o', '--output_file', type=str, default="", help="the output file. (optional. if not included, it'll just modify the input file name)")
+parser.add_argument('-f', '--force', default=False, action='store_true', help='Overwrite output_file without asking')
 parser.add_argument('-t', '--silent_threshold', type=float, default=0.03, help="the volume amount that frames' audio needs to surpass to be consider \"sounded\". It ranges from 0 (silence) to 1 (max volume)")
 parser.add_argument('-snd', '--sounded_speed', type=float, default=1.70, help="the speed that sounded (spoken) frames should be played at. Typically 1.")
 parser.add_argument('-sil', '--silent_speed', type=float, default=8.00, help="the speed that silent frames should be played at. 999999 for jumpcutting.")
@@ -84,11 +116,12 @@ parser.add_argument('-p', '--preset', type=str, default="medium", help="A preset
 parser.add_argument('-crf', '--crf', type=int, default=23, help="Constant Rate Factor (CRF). Lower value - better quality but large filesize. See https://trac.ffmpeg.org/wiki/Encode/H.264")
 parser.add_argument('-alg', '--stretch_algorithm', type=str, default="wsola", help="Sound stretching algorithm. 'phasevocoder' is best in general, but sounds phasy. 'wsola' may have a bit of wobble, but sounds better in many cases.")
 parser.add_argument('-a', '--audio_only', default=False, action='store_true', help="outputs an audio file")
+parser.add_argument('-edl', '--edl', default=False, action='store_true', help='EDL export option. (Supports only cuts off)')
 
 try: # If you want bash completion take a look at https://pypi.org/project/argcomplete/
     import argcomplete
     argcomplete.autocomplete(parser)
-except:
+except ImportError:
     pass
 args = parser.parse_args()
 
@@ -106,8 +139,10 @@ else:
     INPUT_FILE = args.input_file
 URL = args.url
 FRAME_QUALITY = args.frame_quality
-H264_PRESET = args.preset
-H264_CRF = args.crf
+EDL = args.edl
+FORCE = args.force
+H264_PRESET = EDL = args.edlrgs.preset
+H264_CRF = argEDL = args.edl.crf
 
 STRETCH_ALGORITHM = args.stretch_algorithm
 if(STRETCH_ALGORITHM == "phasevocoder"):
@@ -121,18 +156,25 @@ assert INPUT_FILE != None , "why u put no input file, that dum"
 assert os.path.isfile(INPUT_FILE), "I can't read/find your input file"
 assert FRAME_QUALITY < 32 , "The max value for frame quality is 31."
 assert FRAME_QUALITY > 0 , "The min value for frame quality is 1."
-    
+
 if len(args.output_file) >= 1:
     OUTPUT_FILE = args.output_file
 else:
     OUTPUT_FILE = inputToOutputFilename(INPUT_FILE)
+
+if FORCE:
+    safe_remove(OUTPUT_FILE)
+else:
+    if distutils.util.strtobool(input(f"Do you want to overwrite {OUTPUT_FILE}? (y/n)")):
+        safe_remove(OUTPUT_FILE)
+    exit(0)
 
 TEMP_FOLDER = "TEMP" + str(int(time()))
 AUDIO_FADE_ENVELOPE_SIZE = 400 # smooth out transitiion's audio by quickly fading in/out (arbitrary magic number whatever)
     
 createPath(TEMP_FOLDER)
 
-if not AUDIO_ONLY:
+if not (AUDIO_ONLY or EDL):
     command = ["ffmpeg", "-i", INPUT_FILE, "-qscale:v", str(FRAME_QUALITY), TEMP_FOLDER+"/frame%06d.jpg", "-hide_banner"]
     rc = subprocess.run(command)
     if rc.returncode != 0:
@@ -189,7 +231,15 @@ outputPointer = 0
 mask = [x/AUDIO_FADE_ENVELOPE_SIZE for x in range(AUDIO_FADE_ENVELOPE_SIZE)] # Create audio envelope mask
 
 lastExistingFrame = None
+if EDL:
+    edlFrameNumber = 0
+
 for chunk in chunks:
+    if EDL:
+        if (chunk[2] == True):
+            edlFrameNumber += 1
+            writeELD(chunk[0], chunk[1], edlFrameNumber)
+        continue
     audioChunk = audioData[int(chunk[0]*samplesPerFrame):int(chunk[1]*samplesPerFrame)]
     
     sFile = TEMP_FOLDER+"/tempStart.wav"
@@ -230,20 +280,22 @@ for chunk in chunks:
     outputPointer = endPointer
 
 outputAudioData =  np.asarray(outputAudioData)
-wavfile.write(TEMP_FOLDER+"/audioNew.wav",SAMPLE_RATE,outputAudioData)
+if not EDL:
+    wavfile.write(TEMP_FOLDER+"/audioNew.wav",SAMPLE_RATE,outputAudioData)
 
 '''
 outputFrame = math.ceil(outputPointer/samplesPerFrame)
 for endGap in range(outputFrame,audioFrameCount):
     copyFrame(int(audioSampleCount/samplesPerFrame)-1,endGap)
 '''
-if AUDIO_ONLY:
-    command = ["ffmpeg", "-i", TEMP_FOLDER+"/audioNew.wav", OUTPUT_FILE]
-else:
-    command = ["ffmpeg", "-framerate", str(frameRate), "-i", TEMP_FOLDER+"/newFrame%06d.jpg", "-i", TEMP_FOLDER +
+if not EDL:
+    if AUDIO_ONLY:
+        command = ["ffmpeg", "-i", TEMP_FOLDER+"/audioNew.wav", OUTPUT_FILE]
+    else:
+        command = ["ffmpeg", "-framerate", str(frameRate), "-i", TEMP_FOLDER+"/newFrame%06d.jpg", "-i", TEMP_FOLDER +
                "/audioNew.wav", "-strict", "-2", "-c:v", "libx264", "-preset", str(H264_PRESET), "-crf", str(H264_CRF), "-pix_fmt", "yuvj420p", OUTPUT_FILE]
-rc = subprocess.run(command)
-if rc.returncode != 0:
-    deletePathAndExit(TEMP_FOLDER,rc,rc.returncode)
+    rc = subprocess.run(command)
+    if rc.returncode != 0:
+        deletePathAndExit(TEMP_FOLDER,rc,rc.returncode)
 
 deletePathAndExit(TEMP_FOLDER)
