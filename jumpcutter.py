@@ -12,6 +12,7 @@ import argparse
 from pytube import YouTube
 from time import time
 import distutils.util
+import tempfile
 
 def safe_remove(path):
     try:
@@ -44,36 +45,25 @@ def getMaxVolume(s):
     return max(maxv,-minv)
 
 def copyFrame(inputFrame,outputFrame):
-    src = TEMP_FOLDER+"/frame{:06d}".format(inputFrame+1)+".jpg"
-    dst = TEMP_FOLDER+"/newFrame{:06d}".format(outputFrame+1)+".jpg"
+    src = TEMP_FOLDER.name+"/frame{:06d}".format(inputFrame+1)+".jpg"
+    dst = TEMP_FOLDER.name+"/newFrame{:06d}".format(outputFrame+1)+".jpg"
     if not os.path.isfile(src):
         return False
     copyfile(src, dst)
     # Remove unneeded frames
     inputFrame-=1
-    src = TEMP_FOLDER+"/frame{:06d}".format(inputFrame+1)+".jpg"
+    src = TEMP_FOLDER.name+"/frame{:06d}".format(inputFrame+1)+".jpg"
     while safe_remove(src):
 	    inputFrame-=1
-	    src = TEMP_FOLDER+"/frame{:06d}".format(inputFrame+1)+".jpg"
+	    src = TEMP_FOLDER.name+"/frame{:06d}".format(inputFrame+1)+".jpg"
     return True
 
 def inputToOutputFilename(filename):
     dotIndex = filename.rfind(".")
     return filename[:dotIndex]+"_ALTERED"+filename[dotIndex:]
 
-def createPath(s):
-
-    try:  
-        os.mkdir(s)
-    except OSError:  
-        assert False, "Creation of the directory %s failed. (The TEMP folder may already exist. Delete or rename it, and try again.)"
-
 def deletePathAndExit(s, msg="", rc=0): # Dangerous! Watch out!
-    try:  
-        rmtree(s,ignore_errors=False)
-    except OSError:  
-        print ("Deletion of the directory %s failed" % s)
-        print(OSError)
+    s.cleanup()
     print(msg)
     exit(rc)
 
@@ -141,8 +131,8 @@ URL = args.url
 FRAME_QUALITY = args.frame_quality
 EDL = args.edl
 FORCE = args.force
-H264_PRESET = EDL = args.edlrgs.preset
-H264_CRF = argEDL = args.edl.crf
+H264_PRESET = args.preset
+H264_CRF = args.crf
 
 STRETCH_ALGORITHM = args.stretch_algorithm
 if(STRETCH_ALGORITHM == "phasevocoder"):
@@ -165,27 +155,26 @@ else:
 if FORCE:
     safe_remove(OUTPUT_FILE)
 else:
-    if distutils.util.strtobool(input(f"Do you want to overwrite {OUTPUT_FILE}? (y/n)")):
-        safe_remove(OUTPUT_FILE)
-    exit(0)
+    if os.path.isfile(OUTPUT_FILE):
+        if distutils.util.strtobool(input(f"Do you want to overwrite {OUTPUT_FILE}? (y/n)")):
+            safe_remove(OUTPUT_FILE)
+        exit(0)
 
-TEMP_FOLDER = "TEMP" + str(int(time()))
+TEMP_FOLDER = tempfile.TemporaryDirectory()
 AUDIO_FADE_ENVELOPE_SIZE = 400 # smooth out transitiion's audio by quickly fading in/out (arbitrary magic number whatever)
-    
-createPath(TEMP_FOLDER)
 
 if not (AUDIO_ONLY or EDL):
-    command = ["ffmpeg", "-i", INPUT_FILE, "-qscale:v", str(FRAME_QUALITY), TEMP_FOLDER+"/frame%06d.jpg", "-hide_banner"]
+    command = ["ffmpeg", "-i", INPUT_FILE, "-qscale:v", str(FRAME_QUALITY), TEMP_FOLDER.name+"/frame%06d.jpg", "-hide_banner"]
     rc = subprocess.run(command)
     if rc.returncode != 0:
         deletePathAndExit(TEMP_FOLDER,"The input file doesn't have any video. Try --audio_only",rc.returncode)
 
-command = ["ffmpeg", "-i", INPUT_FILE, "-ab", "160k", "-ac", "2", "-ar", str(SAMPLE_RATE), "-vn" ,TEMP_FOLDER+"/audio.wav"]
+command = ["ffmpeg", "-i", INPUT_FILE, "-ab", "160k", "-ac", "2", "-ar", str(SAMPLE_RATE), "-vn" ,TEMP_FOLDER.name+"/audio.wav"]
 rc = subprocess.run(command)
 if rc.returncode != 0:
     deletePathAndExit(TEMP_FOLDER,"The input file doesn't have any sound.",rc.returncode)
 
-sampleRate, audioData = wavfile.read(TEMP_FOLDER+"/audio.wav")
+sampleRate, audioData = wavfile.read(TEMP_FOLDER.name+"/audio.wav")
 audioSampleCount = audioData.shape[0]
 maxAudioVolume = getMaxVolume(audioData)
 
@@ -242,8 +231,8 @@ for chunk in chunks:
         continue
     audioChunk = audioData[int(chunk[0]*samplesPerFrame):int(chunk[1]*samplesPerFrame)]
     
-    sFile = TEMP_FOLDER+"/tempStart.wav"
-    eFile = TEMP_FOLDER+"/tempEnd.wav"
+    sFile = TEMP_FOLDER.name+"/tempStart.wav"
+    eFile = TEMP_FOLDER.name+"/tempEnd.wav"
     wavfile.write(sFile,SAMPLE_RATE,audioChunk)
     with WavReader(sFile) as reader:
         with WavWriter(eFile, reader.channels, reader.samplerate) as writer:
@@ -281,7 +270,7 @@ for chunk in chunks:
 
 outputAudioData =  np.asarray(outputAudioData)
 if not EDL:
-    wavfile.write(TEMP_FOLDER+"/audioNew.wav",SAMPLE_RATE,outputAudioData)
+    wavfile.write(TEMP_FOLDER.name+"/audioNew.wav",SAMPLE_RATE,outputAudioData)
 
 '''
 outputFrame = math.ceil(outputPointer/samplesPerFrame)
@@ -290,9 +279,9 @@ for endGap in range(outputFrame,audioFrameCount):
 '''
 if not EDL:
     if AUDIO_ONLY:
-        command = ["ffmpeg", "-i", TEMP_FOLDER+"/audioNew.wav", OUTPUT_FILE]
+        command = ["ffmpeg", "-i", TEMP_FOLDER.name+"/audioNew.wav", OUTPUT_FILE]
     else:
-        command = ["ffmpeg", "-framerate", str(frameRate), "-i", TEMP_FOLDER+"/newFrame%06d.jpg", "-i", TEMP_FOLDER +
+        command = ["ffmpeg", "-framerate", str(frameRate), "-i", TEMP_FOLDER.name+"/newFrame%06d.jpg", "-i", TEMP_FOLDER.name +
                "/audioNew.wav", "-strict", "-2", "-c:v", "libx264", "-preset", str(H264_PRESET), "-crf", str(H264_CRF), "-pix_fmt", "yuvj420p", OUTPUT_FILE]
     rc = subprocess.run(command)
     if rc.returncode != 0:

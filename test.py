@@ -80,11 +80,10 @@ command = ["python3", "jumpcutter.py", "--input_file",
            testfiles[2], "--output_file", "t.mp4", "--audio_only"]
 subprocess.run(command)
 assert(os.path.getsize("t.mp4") == 408510)
-os.remove("t.mp4")
 
-print("slowdown test")
+print("slowdown test + force test")
 command = ["python3", "jumpcutter.py", "--input_file",
-           testfiles[2], "--output_file", "t.mp4", "--sounded_speed", "0.5", "--silent_speed", "0.9"]
+           testfiles[2], "--output_file", "t.mp4", "--force", "--sounded_speed", "0.5", "--silent_speed", "0.9"]
 subprocess.run(command)
 assert(os.path.getsize("t.mp4") == 22962113)
 os.remove("t.mp4")
@@ -103,4 +102,9 @@ subprocess.run(command)
 assert(os.path.getsize("t.mp4") == 19991295)
 os.remove("t.mp4")
 
-assert("TEMP" not in str(os.listdir()))
+print("edl test")
+command = ["python3", "jumpcutter.py", "--input_file",
+           testfiles[2], "--output_file", "t.edl", "--edl"]
+subprocess.run(command)
+assert(os.path.getsize("t.edl") == 1464)
+os.remove("t.edl")
