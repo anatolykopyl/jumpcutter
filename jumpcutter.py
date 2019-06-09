@@ -158,7 +158,8 @@ else:
     if os.path.isfile(OUTPUT_FILE):
         if distutils.util.strtobool(input(f"Do you want to overwrite {OUTPUT_FILE}? (y/n)")):
             safe_remove(OUTPUT_FILE)
-        exit(0)
+        else:
+            exit(0)
 
 TEMP_FOLDER = tempfile.TemporaryDirectory()
 AUDIO_FADE_ENVELOPE_SIZE = 400 # smooth out transitiion's audio by quickly fading in/out (arbitrary magic number whatever)
