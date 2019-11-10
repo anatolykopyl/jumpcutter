@@ -207,8 +207,12 @@ for i in range(audioFrameCount):
 chunks = [[0,0,0]]
 shouldIncludeFrame = np.zeros((audioFrameCount))
 for i in range(audioFrameCount):
-    start = int(max(0,i-FRAME_SPREADAGE))
-    end = int(min(audioFrameCount,i+1+FRAME_SPREADAGE))
+    start = int(min(max(0,i-FRAME_SPREADAGE),audioFrameCount))
+    end = int(max(0,min(audioFrameCount,i+1+FRAME_SPREADAGE)))
+    if(start>end):
+        end=start+1
+        if(end>audioFrameCount):
+            continue
     shouldIncludeFrame[i] = np.max(hasLoudAudio[start:end])
     if (i >= 1 and shouldIncludeFrame[i] != shouldIncludeFrame[i-1]): # Did we flip?
         chunks.append([chunks[-1][1],i,shouldIncludeFrame[i-1]])
