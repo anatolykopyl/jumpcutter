@@ -27,7 +27,7 @@ Something along the lines of
 2. Execute downloaded File -> Click Install Python
 3. Download https://ffmpeg.zeranoe.com/builds/win64/static/ffmpeg-20190612-caabe1b-win64-static.zip
 4. Extract downloaded File
-5. Download https://github.com/carykh/jumpcutter/archive/master.zip
+5. Download https://github.com/lamaun/jumpcutter/archive/master.zip
 6. Extract downloaded File
 7. Move ffmpeg/bin/ffmpeg.exe to jumpcutter-master/jumpcutter-master folder
 8. Open cmd
